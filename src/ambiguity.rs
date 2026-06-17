@@ -46,6 +46,47 @@ fn collect_ida(hir: &Hir, out: &mut Vec<Finding>) {
     }
 }
 
+/// Empty-loop EDA: an unbounded repetition whose body is nullable and can also
+/// match a non-empty string, e.g. `(a*)*`, `(.*)*`, `(a?)*`.
+///
+/// Such a loop can pad any input with empty iterations, so a run of input
+/// splits among outer iterations in exponentially many ways. The product-
+/// automaton detector folds away these epsilon-cycles and misses them, so this
+/// sound HIR-level rule complements it.
+pub(crate) fn has_empty_loop_eda(hir: &Hir) -> bool {
+    let here = matches!(
+        hir.kind(),
+        HirKind::Repetition(rep)
+            if rep.max.is_none() && nullable(&rep.sub) && matches_nonempty(&rep.sub)
+    );
+    here || children(hir).into_iter().any(has_empty_loop_eda)
+}
+
+/// Can `hir` match the empty string?
+fn nullable(hir: &Hir) -> bool {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => true,
+        HirKind::Literal(lit) => lit.0.is_empty(),
+        HirKind::Class(_) => false,
+        HirKind::Repetition(rep) => rep.min == 0 || nullable(&rep.sub),
+        HirKind::Capture(cap) => nullable(&cap.sub),
+        HirKind::Concat(subs) => subs.iter().all(nullable),
+        HirKind::Alternation(subs) => subs.iter().any(nullable),
+    }
+}
+
+/// Can `hir` match a non-empty string?
+fn matches_nonempty(hir: &Hir) -> bool {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => false,
+        HirKind::Literal(lit) => !lit.0.is_empty(),
+        HirKind::Class(_) => true,
+        HirKind::Repetition(rep) => rep.max != Some(0) && matches_nonempty(&rep.sub),
+        HirKind::Capture(cap) => matches_nonempty(&cap.sub),
+        HirKind::Concat(subs) | HirKind::Alternation(subs) => subs.iter().any(matches_nonempty),
+    }
+}
+
 /// Longest run of adjacent, pairwise-overlapping unbounded repetitions → poly degree.
 fn ida_in_concat(subs: &[Hir]) -> ComplexityClass {
     let mut best_k: u32 = 1;

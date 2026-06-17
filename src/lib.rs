@@ -88,7 +88,8 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
     // Exponential ambiguity: sound product-automaton analysis.
     // Polynomial ambiguity: structural IDA heuristic (NFA-based IDA is pending).
     let nfa = nfa::build(&hir);
-    let findings = if eda::has_eda(&nfa) {
+    let is_eda = eda::has_eda(&nfa) || ambiguity::has_empty_loop_eda(&hir);
+    let findings = if is_eda {
         vec![Finding {
             class: ComplexityClass::Exponential,
             kind: AmbiguityKind::Eda,
