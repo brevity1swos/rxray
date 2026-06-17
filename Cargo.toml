@@ -1,0 +1,13 @@
+[package]
+name = "rxray"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Deterministic regex worst-case complexity (ReDoS) analysis: classify a pattern as linear/polynomial/exponential under backtracking semantics, per engine."
+license = "MIT"
+repository = "https://github.com/brevity1swos/rxray"
+keywords = ["regex", "redos", "backtracking", "security", "complexity"]
+categories = ["text-processing", "development-tools"]
+
+[dependencies]
+regex-syntax = "0.8"
