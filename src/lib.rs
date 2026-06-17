@@ -9,7 +9,9 @@
 //! corpus-validated precision/recall gate) is the remaining Phase 1 work.
 
 mod ambiguity;
+mod eda;
 mod engine;
+mod nfa;
 
 pub use engine::Engine;
 
@@ -83,7 +85,20 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
         });
     }
 
-    let findings = ambiguity::findings(&hir);
+    // Exponential ambiguity: sound product-automaton analysis.
+    // Polynomial ambiguity: structural IDA heuristic (NFA-based IDA is pending).
+    let nfa = nfa::build(&hir);
+    let findings = if eda::has_eda(&nfa) {
+        vec![Finding {
+            class: ComplexityClass::Exponential,
+            kind: AmbiguityKind::Eda,
+            explanation: "two distinct match paths read the same pumpable input \
+                (exponential backtracking)"
+                .to_string(),
+        }]
+    } else {
+        ambiguity::ida_findings(&hir)
+    };
     let worst = ambiguity::worst(&findings);
     Ok(Report {
         engine,
@@ -171,5 +186,23 @@ mod tests {
             analyze("(", Engine::Pcre2),
             Err(AnalyzeError::Parse(_))
         ));
+    }
+
+    // Sound NFA-based EDA improves on the structural heuristic in both directions.
+
+    #[test]
+    fn overlapping_alternation_is_exponential() {
+        // `(aa|a)+` — exponential but no nested repetition; structural missed it.
+        let report = analyze("(aa|a)+", Engine::Pcre2).unwrap();
+        assert_eq!(report.worst, ComplexityClass::Exponential);
+        assert_eq!(report.findings[0].kind, AmbiguityKind::Eda);
+    }
+
+    #[test]
+    fn nested_rep_needing_a_separator_is_not_exponential() {
+        // `(ab+)+` — looks nested, but each outer iteration needs a fresh `a`,
+        // so it is NOT exponential. Structural heuristic false-positived here.
+        let report = analyze("(ab+)+", Engine::Pcre2).unwrap();
+        assert_eq!(report.worst, ComplexityClass::Linear);
     }
 }

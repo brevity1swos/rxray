@@ -1,22 +1,20 @@
-//! Structural ambiguity analysis over the `regex-syntax` HIR.
+//! Structural IDA (polynomial) analysis over the `regex-syntax` HIR.
 //!
-//! Phase 1 first slice, two canonical signatures:
-//! - **EDA** (exponential): an unbounded repetition nested inside another
-//!   unbounded repetition, e.g. `(a+)+`.
-//! - **IDA** (polynomial): a run of `k` adjacent unbounded repetitions whose
-//!   bodies overlap, e.g. `a*a*` → `Polynomial(2)`.
+//! Detects a run of `k` adjacent unbounded repetitions whose bodies overlap,
+//! e.g. `a*a*` → `Polynomial(2)`. Exponential ambiguity (EDA) is handled by the
+//! sound product-automaton analysis in [`crate::eda`], not here.
 //!
-//! The sound NFA-based EDA/IDA analysis (with the corpus-validated precision/
-//! recall gate) is the remaining Phase 1 work.
+//! The sound NFA-based *IDA* analysis (replacing this structural heuristic) and
+//! the corpus-validated precision/recall gate are the remaining Phase 1 work.
 
 use regex_syntax::hir::{Class, Hir, HirKind, Repetition};
 
 use crate::{AmbiguityKind, ComplexityClass, Finding};
 
-/// All ambiguity findings in a parsed pattern, in source order.
-pub(crate) fn findings(hir: &Hir) -> Vec<Finding> {
+/// Structural IDA (polynomial) findings in a parsed pattern, in source order.
+pub(crate) fn ida_findings(hir: &Hir) -> Vec<Finding> {
     let mut out = Vec::new();
-    collect(hir, &mut out);
+    collect_ida(hir, &mut out);
     out
 }
 
@@ -29,22 +27,7 @@ pub(crate) fn worst(findings: &[Finding]) -> ComplexityClass {
         .unwrap_or(ComplexityClass::Linear)
 }
 
-fn collect(hir: &Hir, out: &mut Vec<Finding>) {
-    // EDA: an unbounded repetition whose body contains another unbounded
-    // repetition can match the same input exponentially many ways.
-    if let HirKind::Repetition(rep) = hir.kind() {
-        if is_unbounded(rep) && contains_unbounded_repetition(&rep.sub) {
-            out.push(Finding {
-                class: ComplexityClass::Exponential,
-                kind: AmbiguityKind::Eda,
-                explanation: "nested unbounded repetition can match the same input \
-                    exponentially many ways (exponential backtracking)"
-                    .to_string(),
-            });
-        }
-    }
-
-    // IDA: adjacent overlapping unbounded repetitions in a concatenation.
+fn collect_ida(hir: &Hir, out: &mut Vec<Finding>) {
     if let HirKind::Concat(subs) = hir.kind() {
         if let ComplexityClass::Polynomial(k) = ida_in_concat(subs) {
             out.push(Finding {
@@ -59,7 +42,7 @@ fn collect(hir: &Hir, out: &mut Vec<Finding>) {
     }
 
     for child in children(hir) {
-        collect(child, out);
+        collect_ida(child, out);
     }
 }
 
@@ -102,16 +85,6 @@ fn unbounded_repetition_body(hir: &Hir) -> Option<&Hir> {
 /// A repetition that can pump unboundedly (`*`, `+`, `{n,}`).
 fn is_unbounded(rep: &Repetition) -> bool {
     rep.max.is_none()
-}
-
-/// Does any node in this subtree pump unboundedly?
-fn contains_unbounded_repetition(hir: &Hir) -> bool {
-    if let HirKind::Repetition(rep) = hir.kind() {
-        if is_unbounded(rep) {
-            return true;
-        }
-    }
-    children(hir).into_iter().any(contains_unbounded_repetition)
 }
 
 /// Do two repetition bodies share any matchable first character?
