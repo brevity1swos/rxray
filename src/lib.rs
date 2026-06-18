@@ -148,13 +148,15 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
     })
 }
 
-/// Synthesize an input of `n` pump repetitions that triggers catastrophic
-/// (exponential) backtracking for `pattern` on `engine`, or `None` if the
-/// pattern is not exponentially vulnerable or no candidate could be verified.
+/// Synthesize an input of `n` pump repetitions that triggers super-linear
+/// backtracking for `pattern` on `engine`, or `None` if the pattern is not
+/// vulnerable or no candidate could be verified.
 ///
 /// Every returned attack is *verified*: a backtracking step-counter confirms it
-/// blows up. This slice covers EDA (exponential) patterns whose vulnerable loop
-/// is reachable from the start; polynomial-attack synthesis is a follow-up.
+/// blows up (exponential: exceeds a step cap; polynomial: super-linear growth).
+/// The pump prefix is reconstructed so loops not at the pattern start are
+/// covered. Pick `n` large enough that the polynomial growth is observable
+/// (a few dozen).
 pub fn attack(pattern: &str, engine: Engine, n: u32) -> Option<AttackString> {
     if !engine.caps().backtracks {
         return None;
@@ -164,7 +166,10 @@ pub fn attack(pattern: &str, engine: Engine, n: u32) -> Option<AttackString> {
         return None;
     }
     let nfa = nfa::build(&hir);
-    if !(eda::has_eda(&nfa) || ambiguity::has_empty_loop_eda(&hir)) {
+    let vulnerable = eda::has_eda(&nfa)
+        || ambiguity::has_empty_loop_eda(&hir)
+        || ida::polynomial_degree(&nfa).is_some();
+    if !vulnerable {
         return None;
     }
     synth::synthesize(&nfa, &hir, n)
