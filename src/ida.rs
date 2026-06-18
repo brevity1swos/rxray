@@ -72,18 +72,22 @@ fn triple_reaches(
     let mut seen: HashSet<usize> = HashSet::from([start]);
     let mut queue: VecDeque<usize> = VecDeque::from([start]);
     while let Some(cur) = queue.pop_front() {
-        if *budget == 0 {
-            return false; // give up safely
-        }
-        *budget -= 1;
         let (a, b, c) = (cur / (n * n), (cur / n) % n, cur % n);
         for (r1, a2) in &epsfree[a] {
             for (r2, b2) in &epsfree[b] {
+                if *budget == 0 {
+                    return false; // give up safely (bounds inner work)
+                }
+                *budget -= 1;
                 let r12 = intersect_ranges(r1, r2);
                 if r12.is_empty() {
                     continue;
                 }
                 for (r3, c2) in &epsfree[c] {
+                    if *budget == 0 {
+                        return false;
+                    }
+                    *budget -= 1;
                     if !ranges_intersect(&r12, r3) {
                         continue; // all three must read a common symbol
                     }

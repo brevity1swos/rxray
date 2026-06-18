@@ -13,7 +13,7 @@
 //! patterns use lookaround/backrefs that Rust's `regex-syntax` cannot parse;
 //! those are counted separately (a dialect limitation, not a bug).
 
-use rxray::{analyze, ComplexityClass, Engine};
+use rxray::{analyze, AnalyzeError, ComplexityClass, Engine};
 
 fn html_unescape(s: &str) -> String {
     s.replace("&lt;", "<")
@@ -34,7 +34,7 @@ fn report_over_external_corpus() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(usize::MAX);
 
-    let (mut total, mut parsed, mut parse_err) = (0usize, 0usize, 0usize);
+    let (mut total, mut parsed, mut parse_err, mut too_complex) = (0usize, 0usize, 0usize, 0usize);
     let (mut exp, mut poly, mut lin) = (0usize, 0usize, 0usize);
 
     for line in text.lines().take(limit) {
@@ -43,7 +43,17 @@ fn report_over_external_corpus() {
             continue;
         }
         total += 1;
-        match analyze(&pat, Engine::Pcre2) {
+        let t0 = std::time::Instant::now();
+        let result = analyze(&pat, Engine::Pcre2);
+        let ms = t0.elapsed().as_millis();
+        if ms > 50 {
+            eprintln!(
+                "SLOW {ms}ms (len {}): {}",
+                pat.len(),
+                &pat[..pat.len().min(80)]
+            );
+        }
+        match result {
             Ok(r) => {
                 parsed += 1;
                 match r.worst {
@@ -52,7 +62,8 @@ fn report_over_external_corpus() {
                     ComplexityClass::Linear => lin += 1,
                 }
             }
-            Err(_) => parse_err += 1,
+            Err(AnalyzeError::TooComplex { .. }) => too_complex += 1,
+            Err(AnalyzeError::Parse(_)) => parse_err += 1,
         }
     }
 
@@ -69,6 +80,10 @@ fn report_over_external_corpus() {
     eprintln!(
         "parse errors:  {parse_err} ({:.1}%) — unsupported dialect (lookaround/backrefs)",
         pct(parse_err, total)
+    );
+    eprintln!(
+        "too complex:   {too_complex} ({:.1}%) — NFA too large to analyze (huge bounded reps)",
+        pct(too_complex, total)
     );
     eprintln!("--- of parsed ---");
     eprintln!("exponential:   {exp} ({:.1}%)", pct(exp, parsed));

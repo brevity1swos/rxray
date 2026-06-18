@@ -22,7 +22,7 @@ const MAX_STATES: usize = 1000;
 /// (fail-safe). The per-diagonal reachability is worst-case O(n³); a future
 /// SCC pass (EDA iff an SCC mixes a diagonal and an off-diagonal node) removes
 /// this bound.
-const VISIT_CAP: usize = 5_000_000;
+const VISIT_CAP: usize = 2_000_000;
 
 /// Does `nfa` exhibit exponential-degree ambiguity (exponential backtracking)?
 pub(crate) fn has_eda(nfa: &Nfa) -> bool {
@@ -42,13 +42,13 @@ pub(crate) fn has_eda(nfa: &Nfa) -> bool {
     let mut seen: HashSet<usize> = HashSet::from([start]);
     let mut queue: VecDeque<usize> = VecDeque::from([start]);
     while let Some(cur) = queue.pop_front() {
-        if budget == 0 {
-            return false; // give up safely
-        }
-        budget -= 1;
         let (p, q) = (cur / n, cur % n);
         for (r1, p2) in &epsfree[p] {
             for (r2, q2) in &epsfree[q] {
+                if budget == 0 {
+                    return false; // give up safely (bounds inner work, not just pops)
+                }
+                budget -= 1;
                 if ranges_intersect(r1, r2) {
                     let next = node(*p2, *q2);
                     fwd.entry(cur).or_default().push(next);

@@ -36,6 +36,32 @@ impl Nfa {
     }
 }
 
+/// Upper-bound estimate of the NFA state count `build` would produce, so callers
+/// can skip patterns whose bounded repetitions (`{1000}`, `.{255}`) would explode
+/// the construction. Saturating — never overflows.
+pub(crate) fn estimate_states(hir: &Hir) -> usize {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => 1,
+        HirKind::Literal(lit) => lit.0.len().saturating_add(1),
+        HirKind::Class(_) => 2,
+        HirKind::Capture(cap) => estimate_states(&cap.sub),
+        HirKind::Concat(subs) => subs
+            .iter()
+            .fold(1usize, |acc, s| acc.saturating_add(estimate_states(s))),
+        HirKind::Alternation(subs) => subs
+            .iter()
+            .fold(2usize, |acc, s| acc.saturating_add(estimate_states(s))),
+        HirKind::Repetition(rep) => {
+            let body = estimate_states(&rep.sub);
+            let copies = match rep.max {
+                Some(m) => m as usize,
+                None => rep.min as usize + 1,
+            };
+            body.saturating_mul(copies.max(1)).saturating_add(2)
+        }
+    }
+}
+
 /// Build a Thompson NFA from a parsed pattern.
 pub(crate) fn build(hir: &Hir) -> Nfa {
     let mut nfa = Nfa {
@@ -155,19 +181,23 @@ fn class_ranges(class: &Class) -> Ranges {
 
 // --- Shared automata helpers (used by the EDA/IDA product analyses) ---
 
-/// Epsilon-closure of a single state.
+/// Epsilon-closure of a single state. O(states + eps-edges) via a visited bitvec
+/// (a `Vec::contains` here would make `epsfree_moves` O(n³)).
 pub(crate) fn eclose(nfa: &Nfa, s: StateId) -> Vec<StateId> {
+    let mut visited = vec![false; nfa.states.len()];
     let mut stack = vec![s];
-    let mut seen = vec![s];
+    visited[s] = true;
+    let mut out = vec![s];
     while let Some(x) = stack.pop() {
         for &t in &nfa.states[x].eps {
-            if !seen.contains(&t) {
-                seen.push(t);
+            if !visited[t] {
+                visited[t] = true;
+                out.push(t);
                 stack.push(t);
             }
         }
     }
-    seen
+    out
 }
 
 /// Epsilon-free labeled moves per state (source-side epsilons folded in).

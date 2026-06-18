@@ -58,12 +58,19 @@ pub struct Report {
 pub enum AnalyzeError {
     /// The pattern did not parse as a regex. Boxed — `regex_syntax::Error` is large.
     Parse(Box<regex_syntax::Error>),
+    /// The pattern's expanded NFA would be too large to analyze (e.g. huge
+    /// bounded repetitions). Skipped rather than reported as a false "safe".
+    TooComplex { estimated_states: usize },
 }
 
 impl std::fmt::Display for AnalyzeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AnalyzeError::Parse(e) => write!(f, "pattern failed to parse: {e}"),
+            AnalyzeError::TooComplex { estimated_states } => write!(
+                f,
+                "pattern too complex to analyze (≈{estimated_states} NFA states)"
+            ),
         }
     }
 }
@@ -74,7 +81,17 @@ impl std::error::Error for AnalyzeError {}
 ///
 /// Pure and static: never executes the regex.
 pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
-    let hir = regex_syntax::parse(pattern).map_err(|e| AnalyzeError::Parse(Box::new(e)))?;
+    // Parse in ASCII mode: complexity/ambiguity is *structural*, identical whether
+    // `\w`/`\d`/`.` are ASCII or Unicode — but Unicode classes carry thousands of
+    // ranges that make the product analysis' range intersections pathologically
+    // slow. ASCII keeps verdicts the same with tiny range sets.
+    let mut parser = regex_syntax::ParserBuilder::new()
+        .unicode(false)
+        .utf8(false)
+        .build();
+    let hir = parser
+        .parse(pattern)
+        .map_err(|e| AnalyzeError::Parse(Box::new(e)))?;
 
     // Linear-by-construction engines (Rust regex, Go RE2) cannot backtrack —
     // no pattern is ReDoS-vulnerable on them (design invariant).
@@ -84,6 +101,14 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
             worst: ComplexityClass::Linear,
             findings: Vec::new(),
         });
+    }
+
+    // Skip patterns whose expanded NFA would explode (huge bounded reps) — they
+    // are reported as TooComplex, never as a false "Linear/safe".
+    const MAX_NFA_STATES: usize = 2000;
+    let estimated_states = nfa::estimate_states(&hir);
+    if estimated_states > MAX_NFA_STATES {
+        return Err(AnalyzeError::TooComplex { estimated_states });
     }
 
     // Exponential ambiguity: sound product-automaton analysis.
