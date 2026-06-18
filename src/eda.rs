@@ -12,7 +12,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::nfa::{Nfa, Ranges, StateId};
+use crate::nfa::{epsfree_moves, ranges_intersect, Nfa};
 
 /// Does `nfa` exhibit exponential-degree ambiguity (exponential backtracking)?
 pub(crate) fn has_eda(nfa: &Nfa) -> bool {
@@ -21,19 +21,7 @@ pub(crate) fn has_eda(nfa: &Nfa) -> bool {
         return false;
     }
 
-    // Epsilon-free labeled moves per state (source-side epsilons folded in).
-    let epsfree: Vec<Vec<(Ranges, StateId)>> = (0..n)
-        .map(|s| {
-            let mut mv = Vec::new();
-            for u in eclose(nfa, s) {
-                for (r, v) in &nfa.states[u].moves {
-                    mv.push((r.clone(), *v));
-                }
-            }
-            mv
-        })
-        .collect();
-
+    let epsfree = epsfree_moves(nfa);
     let node = |p: usize, q: usize| p * n + q;
     let start = node(nfa.start, nfa.start);
 
@@ -81,27 +69,6 @@ fn reach(adj: &HashMap<usize, Vec<usize>>, from: usize) -> HashSet<usize> {
                 if seen.insert(next) {
                     queue.push_back(next);
                 }
-            }
-        }
-    }
-    seen
-}
-
-/// Do two range sets share any character?
-fn ranges_intersect(a: &Ranges, b: &Ranges) -> bool {
-    a.iter()
-        .any(|&(a0, a1)| b.iter().any(|&(b0, b1)| a0 <= b1 && b0 <= a1))
-}
-
-/// Epsilon-closure of a single state.
-fn eclose(nfa: &Nfa, s: StateId) -> Vec<StateId> {
-    let mut stack = vec![s];
-    let mut seen = vec![s];
-    while let Some(x) = stack.pop() {
-        for &t in &nfa.states[x].eps {
-            if !seen.contains(&t) {
-                seen.push(t);
-                stack.push(t);
             }
         }
     }

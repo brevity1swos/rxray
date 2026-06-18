@@ -153,6 +153,59 @@ fn class_ranges(class: &Class) -> Ranges {
     }
 }
 
+// --- Shared automata helpers (used by the EDA/IDA product analyses) ---
+
+/// Epsilon-closure of a single state.
+pub(crate) fn eclose(nfa: &Nfa, s: StateId) -> Vec<StateId> {
+    let mut stack = vec![s];
+    let mut seen = vec![s];
+    while let Some(x) = stack.pop() {
+        for &t in &nfa.states[x].eps {
+            if !seen.contains(&t) {
+                seen.push(t);
+                stack.push(t);
+            }
+        }
+    }
+    seen
+}
+
+/// Epsilon-free labeled moves per state (source-side epsilons folded in).
+pub(crate) fn epsfree_moves(nfa: &Nfa) -> Vec<Vec<(Ranges, StateId)>> {
+    (0..nfa.states.len())
+        .map(|s| {
+            let mut mv = Vec::new();
+            for u in eclose(nfa, s) {
+                for (r, v) in &nfa.states[u].moves {
+                    mv.push((r.clone(), *v));
+                }
+            }
+            mv
+        })
+        .collect()
+}
+
+/// Do two range sets share any character?
+pub(crate) fn ranges_intersect(a: &Ranges, b: &Ranges) -> bool {
+    a.iter()
+        .any(|&(a0, a1)| b.iter().any(|&(b0, b1)| a0 <= b1 && b0 <= a1))
+}
+
+/// The intersection of two range sets (for three-way common-symbol checks).
+pub(crate) fn intersect_ranges(a: &Ranges, b: &Ranges) -> Ranges {
+    let mut out = Vec::new();
+    for &(a0, a1) in a {
+        for &(b0, b1) in b {
+            let lo = a0.max(b0);
+            let hi = a1.min(b1);
+            if lo <= hi {
+                out.push((lo, hi));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 impl Nfa {
     /// Whole-string NFA simulation (epsilon-closure powerset). Test-only.

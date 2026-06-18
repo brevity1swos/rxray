@@ -24,7 +24,12 @@ const EXPONENTIAL: &[&str] = &[
 ];
 
 /// Patterns that are polynomial (IDA) — quadratic+ but NOT exponential.
-const POLYNOMIAL: &[&str] = &["a*a*$", r"\d*\d*$", ".*.*$"];
+const POLYNOMIAL: &[&str] = &[
+    "a*a*$",
+    r"\d*\d*$",
+    ".*.*$",
+    r"\d*-?\d*$", // non-adjacent reps — structural heuristic missed this
+];
 
 /// Safe, linear patterns → must never be flagged exponential.
 const SAFE: &[&str] = &[
@@ -77,20 +82,20 @@ fn eda_detector_catches_all_exponential() {
 }
 
 #[test]
-fn polynomial_patterns_are_at_least_flagged_nonlinear() {
-    // Polynomial detection is still the structural heuristic; this documents
-    // current behavior rather than asserting soundness.
-    let mut linear = Vec::new();
+fn polynomial_patterns_are_detected_as_polynomial() {
+    // Sound NFA-based IDA: every polynomial pattern must be flagged Polynomial
+    // (not Linear, not over-escalated to Exponential).
+    let mut wrong = Vec::new();
     for &p in POLYNOMIAL {
-        if matches!(
+        if !matches!(
             analyze(p, Engine::Pcre2).map(|r| r.worst),
-            Ok(ComplexityClass::Linear)
+            Ok(ComplexityClass::Polynomial(_))
         ) {
-            linear.push(p);
+            wrong.push((p, analyze(p, Engine::Pcre2).map(|r| r.worst)));
         }
     }
-    // Report (not a hard gate yet) — IDA soundness is pending.
-    if !linear.is_empty() {
-        eprintln!("NOTE: polynomial patterns currently classified Linear: {linear:?}");
-    }
+    assert!(
+        wrong.is_empty(),
+        "polynomial patterns misclassified: {wrong:?}"
+    );
 }

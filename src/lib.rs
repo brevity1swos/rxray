@@ -11,6 +11,7 @@
 mod ambiguity;
 mod eda;
 mod engine;
+mod ida;
 mod nfa;
 
 pub use engine::Engine;
@@ -97,8 +98,26 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
                 (exponential backtracking)"
                 .to_string(),
         }]
+    } else if ida::has_ida(&nfa) {
+        // Sound detection (triple product); degree is a structural estimate (≥2).
+        let degree = ambiguity::ida_findings(&hir)
+            .iter()
+            .filter_map(|f| match f.class {
+                ComplexityClass::Polynomial(k) => Some(k),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(2)
+            .max(2);
+        vec![Finding {
+            class: ComplexityClass::Polynomial(degree),
+            kind: AmbiguityKind::Ida,
+            explanation: format!(
+                "super-linear backtracking: polynomial, estimated degree {degree}"
+            ),
+        }]
     } else {
-        ambiguity::ida_findings(&hir)
+        Vec::new()
     };
     let worst = ambiguity::worst(&findings);
     Ok(Report {
@@ -205,5 +224,14 @@ mod tests {
         // so it is NOT exponential. Structural heuristic false-positived here.
         let report = analyze("(ab+)+", Engine::Pcre2).unwrap();
         assert_eq!(report.worst, ComplexityClass::Linear);
+    }
+
+    #[test]
+    fn non_adjacent_polynomial_is_detected() {
+        // `\d*-?\d*` — two unbounded reps separated by `-?`; the structural IDA
+        // heuristic missed it (not adjacent), the sound NFA IDA catches it.
+        let report = analyze(r"\d*-?\d*", Engine::Pcre2).unwrap();
+        assert!(matches!(report.worst, ComplexityClass::Polynomial(_)));
+        assert_eq!(report.findings[0].kind, AmbiguityKind::Ida);
     }
 }
