@@ -123,23 +123,12 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
                 (exponential backtracking)"
                 .to_string(),
         }]
-    } else if ida::has_ida(&nfa) {
-        // Sound detection (triple product); degree is a structural estimate (≥2).
-        let degree = ambiguity::ida_findings(&hir)
-            .iter()
-            .filter_map(|f| match f.class {
-                ComplexityClass::Polynomial(k) => Some(k),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(2)
-            .max(2);
+    } else if let Some(degree) = ida::polynomial_degree(&nfa) {
+        // Sound detection AND exact degree via the triple-product IDA-pair chain.
         vec![Finding {
             class: ComplexityClass::Polynomial(degree),
             kind: AmbiguityKind::Ida,
-            explanation: format!(
-                "super-linear backtracking: polynomial, estimated degree {degree}"
-            ),
+            explanation: format!("super-linear backtracking: polynomial O(n^{degree})"),
         }]
     } else {
         Vec::new()

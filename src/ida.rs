@@ -24,11 +24,26 @@ const VISIT_CAP: usize = 2_000_000;
 /// out and return `false`. Fail-safe (no false positives), documented limit.
 const MAX_STATES: usize = 600;
 
-/// Does `nfa` have IDA (super-linear / polynomial backtracking)?
-pub(crate) fn has_ida(nfa: &Nfa) -> bool {
+/// The polynomial degree of ambiguity (matching-time exponent), if `nfa` has IDA.
+///
+/// `None` ⇒ no super-linear ambiguity (linear). `Some(k)` ⇒ worst-case O(nᵏ),
+/// `k ≥ 2`. The degree is `da + 1` where `da` is the longest chain of IDA-pairs
+/// (Allauzen–Mohri–Rastogi): a graph edge `p→q` for each IDA-pair `(p,q)`, and
+/// `da` = longest path (in edges). Exact within the size/budget bounds; a
+/// budget cutout can only *under*-report the degree, never over-report.
+pub(crate) fn polynomial_degree(nfa: &Nfa) -> Option<u32> {
+    let pairs = ida_pairs(nfa);
+    if pairs.is_empty() {
+        return None;
+    }
+    Some(longest_chain(&pairs) + 1)
+}
+
+/// All IDA-pairs `(p, q)`: `p ≠ q`, both trim, with `(p,p,q) →⁺ (p,q,q)` in `A³`.
+fn ida_pairs(nfa: &Nfa) -> Vec<(usize, usize)> {
     let n = nfa.states.len();
     if n == 0 || n > MAX_STATES {
-        return false;
+        return Vec::new();
     }
     let epsfree = epsfree_moves(nfa);
     let from_start = reachable_from_start(nfa);
@@ -36,6 +51,7 @@ pub(crate) fn has_ida(nfa: &Nfa) -> bool {
 
     let node = |a: usize, b: usize, c: usize| (a * n + b) * n + c;
     let mut budget = VISIT_CAP;
+    let mut pairs = Vec::new();
 
     for (p, &p_ok) in from_start.iter().enumerate() {
         if !p_ok {
@@ -53,11 +69,52 @@ pub(crate) fn has_ida(nfa: &Nfa) -> bool {
                 node(p, q, q),
                 &mut budget,
             ) {
-                return true;
+                pairs.push((p, q));
             }
         }
     }
-    false
+    pairs
+}
+
+/// Longest path (in edges) in the directed graph whose edges are the IDA-pairs.
+/// Memoized DFS; cycles (which would imply EDA, handled upstream) are capped.
+fn longest_chain(pairs: &[(usize, usize)]) -> u32 {
+    let mut adj: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for &(p, q) in pairs {
+        adj.entry(p).or_default().push(q);
+    }
+    let mut memo: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
+    let mut on_stack: HashSet<usize> = HashSet::new();
+    let nodes: HashSet<usize> = pairs.iter().flat_map(|&(p, q)| [p, q]).collect();
+    nodes
+        .iter()
+        .map(|&s| longest_from(s, &adj, &mut memo, &mut on_stack))
+        .max()
+        .unwrap_or(0)
+}
+
+fn longest_from(
+    s: usize,
+    adj: &std::collections::HashMap<usize, Vec<usize>>,
+    memo: &mut std::collections::HashMap<usize, u32>,
+    on_stack: &mut HashSet<usize>,
+) -> u32 {
+    if let Some(&v) = memo.get(&s) {
+        return v;
+    }
+    if !on_stack.insert(s) {
+        return 0; // cycle guard (anomalous: would mean EDA)
+    }
+    let best = adj
+        .get(&s)
+        .into_iter()
+        .flatten()
+        .map(|&t| 1 + longest_from(t, adj, memo, on_stack))
+        .max()
+        .unwrap_or(0);
+    on_stack.remove(&s);
+    memo.insert(s, best);
+    best
 }
 
 /// Is `target` reachable from `start` (via ≥1 edge) in the triple product?
@@ -158,7 +215,27 @@ mod tests {
     use crate::nfa::build;
 
     fn ida(pattern: &str) -> bool {
-        has_ida(&build(&regex_syntax::parse(pattern).unwrap()))
+        polynomial_degree(&build(&regex_syntax::parse(pattern).unwrap())).is_some()
+    }
+
+    fn degree(pattern: &str) -> Option<u32> {
+        polynomial_degree(&build(&regex_syntax::parse(pattern).unwrap()))
+    }
+
+    #[test]
+    fn polynomial_degree_ladder() {
+        // k adjacent overlapping stars → O(n^k): the decisive exactness check.
+        assert_eq!(degree("a*a*"), Some(2));
+        assert_eq!(degree("a*a*a*"), Some(3));
+        assert_eq!(degree("a*a*a*a*"), Some(4));
+        assert_eq!(degree("a*a*a*a*a*"), Some(5));
+    }
+
+    #[test]
+    fn linear_has_no_degree() {
+        assert_eq!(degree("a*b*"), None);
+        assert_eq!(degree("a+"), None);
+        assert_eq!(degree("(ab)+"), None);
     }
 
     #[test]
