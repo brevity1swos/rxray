@@ -13,8 +13,13 @@ mod eda;
 mod engine;
 mod ida;
 mod nfa;
+mod synth;
 
 pub use engine::Engine;
+pub use synth::AttackString;
+
+/// NFA-state ceiling above which a pattern is `TooComplex` to analyze.
+const MAX_NFA_STATES: usize = 2000;
 
 /// Worst-case match complexity of a pattern under backtracking semantics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,18 +85,21 @@ impl std::error::Error for AnalyzeError {}
 /// Statically analyze `pattern`'s worst-case complexity for `engine`.
 ///
 /// Pure and static: never executes the regex.
-pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
-    // Parse in ASCII mode: complexity/ambiguity is *structural*, identical whether
-    // `\w`/`\d`/`.` are ASCII or Unicode — but Unicode classes carry thousands of
-    // ranges that make the product analysis' range intersections pathologically
-    // slow. ASCII keeps verdicts the same with tiny range sets.
-    let mut parser = regex_syntax::ParserBuilder::new()
+/// Parse in ASCII mode. Complexity/ambiguity is *structural*, identical whether
+/// `\w`/`\d`/`.` are ASCII or Unicode — but Unicode classes carry thousands of
+/// ranges that make the product analyses' range intersections pathologically
+/// slow. ASCII keeps verdicts the same with tiny range sets.
+fn parse_ascii(pattern: &str) -> Result<regex_syntax::hir::Hir, AnalyzeError> {
+    regex_syntax::ParserBuilder::new()
         .unicode(false)
         .utf8(false)
-        .build();
-    let hir = parser
+        .build()
         .parse(pattern)
-        .map_err(|e| AnalyzeError::Parse(Box::new(e)))?;
+        .map_err(|e| AnalyzeError::Parse(Box::new(e)))
+}
+
+pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
+    let hir = parse_ascii(pattern)?;
 
     // Linear-by-construction engines (Rust regex, Go RE2) cannot backtrack —
     // no pattern is ReDoS-vulnerable on them (design invariant).
@@ -105,14 +113,13 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
 
     // Skip patterns whose expanded NFA would explode (huge bounded reps) — they
     // are reported as TooComplex, never as a false "Linear/safe".
-    const MAX_NFA_STATES: usize = 2000;
     let estimated_states = nfa::estimate_states(&hir);
     if estimated_states > MAX_NFA_STATES {
         return Err(AnalyzeError::TooComplex { estimated_states });
     }
 
-    // Exponential ambiguity: sound product-automaton analysis.
-    // Polynomial ambiguity: structural IDA heuristic (NFA-based IDA is pending).
+    // Exponential ambiguity: sound product-automaton analysis (+ empty-loop rule).
+    // Polynomial ambiguity: sound triple-product IDA with exact degree.
     let nfa = nfa::build(&hir);
     let is_eda = eda::has_eda(&nfa) || ambiguity::has_empty_loop_eda(&hir);
     let findings = if is_eda {
@@ -139,6 +146,28 @@ pub fn analyze(pattern: &str, engine: Engine) -> Result<Report, AnalyzeError> {
         worst,
         findings,
     })
+}
+
+/// Synthesize an input of `n` pump repetitions that triggers catastrophic
+/// (exponential) backtracking for `pattern` on `engine`, or `None` if the
+/// pattern is not exponentially vulnerable or no candidate could be verified.
+///
+/// Every returned attack is *verified*: a backtracking step-counter confirms it
+/// blows up. This slice covers EDA (exponential) patterns whose vulnerable loop
+/// is reachable from the start; polynomial-attack synthesis is a follow-up.
+pub fn attack(pattern: &str, engine: Engine, n: u32) -> Option<AttackString> {
+    if !engine.caps().backtracks {
+        return None;
+    }
+    let hir = parse_ascii(pattern).ok()?;
+    if nfa::estimate_states(&hir) > MAX_NFA_STATES {
+        return None;
+    }
+    let nfa = nfa::build(&hir);
+    if !(eda::has_eda(&nfa) || ambiguity::has_empty_loop_eda(&hir)) {
+        return None;
+    }
+    synth::synthesize(&nfa, &hir, n)
 }
 
 #[cfg(test)]
@@ -238,6 +267,17 @@ mod tests {
         // so it is NOT exponential. Structural heuristic false-positived here.
         let report = analyze("(ab+)+", Engine::Pcre2).unwrap();
         assert_eq!(report.worst, ComplexityClass::Linear);
+    }
+
+    #[test]
+    fn attack_synthesizes_for_exponential_and_not_for_safe() {
+        let atk = attack("(a+)+$", Engine::Pcre2, 28).expect("attack for EDA");
+        assert_eq!(atk.pumped_n, 28);
+        assert!(atk.value.contains("aaaa"));
+        // Safe pattern → no attack.
+        assert!(attack("a+$", Engine::Pcre2, 28).is_none());
+        // Linear engine → never an attack.
+        assert!(attack("(a+)+$", Engine::RustRegex, 28).is_none());
     }
 
     #[test]
