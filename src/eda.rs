@@ -14,10 +14,14 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::nfa::{epsfree_moves, ranges_intersect, Nfa};
 
+/// Above this NFA size the product (O(n²) nodes) is too expensive; bail out.
+/// Fail-safe (no false positives), documented limit.
+const MAX_STATES: usize = 3000;
+
 /// Does `nfa` exhibit exponential-degree ambiguity (exponential backtracking)?
 pub(crate) fn has_eda(nfa: &Nfa) -> bool {
     let n = nfa.states.len();
-    if n == 0 {
+    if n == 0 || n > MAX_STATES {
         return false;
     }
 

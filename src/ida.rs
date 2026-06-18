@@ -20,10 +20,14 @@ use crate::nfa::{epsfree_moves, intersect_ranges, ranges_intersect, Nfa};
 /// hitting it returns `false` — sound, never a false positive).
 const VISIT_CAP: usize = 2_000_000;
 
+/// Above this NFA size the triple product (O(n³) nodes) is too expensive; bail
+/// out and return `false`. Fail-safe (no false positives), documented limit.
+const MAX_STATES: usize = 600;
+
 /// Does `nfa` have IDA (super-linear / polynomial backtracking)?
 pub(crate) fn has_ida(nfa: &Nfa) -> bool {
     let n = nfa.states.len();
-    if n == 0 {
+    if n == 0 || n > MAX_STATES {
         return false;
     }
     let epsfree = epsfree_moves(nfa);
