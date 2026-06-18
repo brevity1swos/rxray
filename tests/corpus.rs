@@ -21,6 +21,11 @@ const EXPONENTIAL: &[&str] = &[
     "(x+x+)+y",
     "(a+)+b",
     "(.*)*$",
+    r"(\d+)*$",   // nested via star
+    "(x*)*y",     // empty-loop nested
+    r"(\s*)*$",   // empty-loop
+    "([a-z]*)*$", // empty-loop
+    "(a?)+$",     // nullable body under +
 ];
 
 /// Patterns that are polynomial (IDA) — quadratic+ but NOT exponential.
@@ -29,6 +34,9 @@ const POLYNOMIAL: &[&str] = &[
     r"\d*\d*$",
     ".*.*$",
     r"\d*-?\d*$", // non-adjacent reps — structural heuristic missed this
+    r"\w*\w*$",
+    "[a-z]*[a-z]*$",
+    "a*a*a*a*$", // higher degree
 ];
 
 /// Safe, linear patterns → must never be flagged exponential.
@@ -43,6 +51,11 @@ const SAFE: &[&str] = &[
     r"^[a-z0-9]+@[a-z0-9]+\.[a-z]+$",
     r"\w+",
     "(ab+)+", // looks nested but needs a fresh separator — not exponential
+    r"^\d+$",
+    "foo|bar|baz",
+    r"\d{4}-\d{2}-\d{2}",
+    "(abc)+def",
+    r"[A-Za-z0-9._%+-]+",
 ];
 
 fn is_exponential(pattern: &str) -> bool {
