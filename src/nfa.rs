@@ -8,6 +8,8 @@
 //! backtracking ambiguity in this model); backreferences are not representable
 //! in an NFA and are handled upstream.
 
+use std::collections::VecDeque;
+
 use regex_syntax::hir::{Class, Hir, HirKind};
 
 pub(crate) type StateId = usize;
@@ -234,6 +236,53 @@ pub(crate) fn intersect_ranges(a: &Ranges, b: &Ranges) -> Ranges {
         }
     }
     out
+}
+
+/// States reachable from `from` over epsilon + labeled transitions.
+pub(crate) fn reach_forward(nfa: &Nfa, from: StateId) -> Vec<bool> {
+    let mut seen = vec![false; nfa.states.len()];
+    let mut queue = VecDeque::from([from]);
+    seen[from] = true;
+    while let Some(s) = queue.pop_front() {
+        let targets = nfa.states[s]
+            .eps
+            .iter()
+            .copied()
+            .chain(nfa.states[s].moves.iter().map(|(_, t)| *t));
+        for t in targets {
+            if !seen[t] {
+                seen[t] = true;
+                queue.push_back(t);
+            }
+        }
+    }
+    seen
+}
+
+/// States that can reach `to` over epsilon + labeled transitions.
+pub(crate) fn reach_backward(nfa: &Nfa, to: StateId) -> Vec<bool> {
+    let n = nfa.states.len();
+    let mut rev: Vec<Vec<StateId>> = vec![Vec::new(); n];
+    for (s, st) in nfa.states.iter().enumerate() {
+        for &t in &st.eps {
+            rev[t].push(s);
+        }
+        for (_, t) in &st.moves {
+            rev[*t].push(s);
+        }
+    }
+    let mut seen = vec![false; n];
+    let mut queue = VecDeque::from([to]);
+    seen[to] = true;
+    while let Some(s) = queue.pop_front() {
+        for &p in &rev[s] {
+            if !seen[p] {
+                seen[p] = true;
+                queue.push_back(p);
+            }
+        }
+    }
+    seen
 }
 
 #[cfg(test)]

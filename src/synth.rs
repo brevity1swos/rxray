@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use regex_syntax::hir::{Class, Hir, HirKind};
 
-use crate::nfa::{eclose, Nfa};
+use crate::nfa::{eclose, reach_backward, reach_forward, Nfa};
 
 /// A synthesized input that triggers catastrophic backtracking.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,62 +130,19 @@ fn shortest_prefixes(nfa: &Nfa) -> Vec<(usize, String)> {
 
 /// Is `m` on a cycle that consumes ≥1 character?
 fn is_pumpable(nfa: &Nfa, m: usize) -> bool {
-    let forward = reach(nfa, m);
-    let backward = reach_rev(nfa, m);
+    let forward = reach_forward(nfa, m);
+    let backward = reach_backward(nfa, m);
     for (u, st) in nfa.states.iter().enumerate() {
-        if !forward.contains(&u) {
+        if !forward[u] {
             continue;
         }
         for (_, v) in &st.moves {
-            if backward.contains(v) {
+            if backward[*v] {
                 return true; // u (reachable from m) --label--> v (can reach m)
             }
         }
     }
     false
-}
-
-/// States reachable from `s` (epsilon + labeled).
-fn reach(nfa: &Nfa, s: usize) -> HashSet<usize> {
-    let mut seen = HashSet::from([s]);
-    let mut queue = VecDeque::from([s]);
-    while let Some(x) = queue.pop_front() {
-        let next = nfa.states[x]
-            .eps
-            .iter()
-            .copied()
-            .chain(nfa.states[x].moves.iter().map(|(_, t)| *t));
-        for t in next {
-            if seen.insert(t) {
-                queue.push_back(t);
-            }
-        }
-    }
-    seen
-}
-
-/// States that can reach `s` (epsilon + labeled).
-fn reach_rev(nfa: &Nfa, s: usize) -> HashSet<usize> {
-    let n = nfa.states.len();
-    let mut rev: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (a, st) in nfa.states.iter().enumerate() {
-        for &t in &st.eps {
-            rev[t].push(a);
-        }
-        for (_, t) in &st.moves {
-            rev[*t].push(a);
-        }
-    }
-    let mut seen = HashSet::from([s]);
-    let mut queue = VecDeque::from([s]);
-    while let Some(x) = queue.pop_front() {
-        for &a in &rev[x] {
-            if seen.insert(a) {
-                queue.push_back(a);
-            }
-        }
-    }
-    seen
 }
 
 /// Representative characters drawn from the pattern's literals and classes.

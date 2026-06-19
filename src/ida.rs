@@ -14,7 +14,9 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::nfa::{epsfree_moves, intersect_ranges, ranges_intersect, Nfa};
+use crate::nfa::{
+    epsfree_moves, intersect_ranges, ranges_intersect, reach_backward, reach_forward, Nfa,
+};
 
 /// A safety cap on triple-product exploration (keeps large patterns bounded;
 /// hitting it returns `false` — sound, never a false positive).
@@ -46,8 +48,8 @@ fn ida_pairs(nfa: &Nfa) -> Vec<(usize, usize)> {
         return Vec::new();
     }
     let epsfree = epsfree_moves(nfa);
-    let from_start = reachable_from_start(nfa);
-    let to_accept = reaches_accept(nfa);
+    let from_start = reach_forward(nfa, nfa.start);
+    let to_accept = reach_backward(nfa, nfa.accept);
 
     let node = |a: usize, b: usize, c: usize| (a * n + b) * n + c;
     let mut budget = VISIT_CAP;
@@ -160,53 +162,6 @@ fn triple_reaches(
         }
     }
     false
-}
-
-/// States reachable from the start (over epsilon + labeled transitions).
-fn reachable_from_start(nfa: &Nfa) -> Vec<bool> {
-    let mut seen = vec![false; nfa.states.len()];
-    let mut queue = VecDeque::from([nfa.start]);
-    seen[nfa.start] = true;
-    while let Some(s) = queue.pop_front() {
-        let targets = nfa.states[s]
-            .eps
-            .iter()
-            .copied()
-            .chain(nfa.states[s].moves.iter().map(|(_, t)| *t));
-        for t in targets {
-            if !seen[t] {
-                seen[t] = true;
-                queue.push_back(t);
-            }
-        }
-    }
-    seen
-}
-
-/// States that can reach the accept state (over epsilon + labeled transitions).
-fn reaches_accept(nfa: &Nfa) -> Vec<bool> {
-    let n = nfa.states.len();
-    let mut rev: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (s, st) in nfa.states.iter().enumerate() {
-        for &t in &st.eps {
-            rev[t].push(s);
-        }
-        for (_, t) in &st.moves {
-            rev[*t].push(s);
-        }
-    }
-    let mut seen = vec![false; n];
-    let mut queue = VecDeque::from([nfa.accept]);
-    seen[nfa.accept] = true;
-    while let Some(s) = queue.pop_front() {
-        for &p in &rev[s] {
-            if !seen[p] {
-                seen[p] = true;
-                queue.push_back(p);
-            }
-        }
-    }
-    seen
 }
 
 #[cfg(test)]
