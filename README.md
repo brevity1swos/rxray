@@ -3,7 +3,10 @@
 Deterministic regex worst-case complexity (ReDoS) analysis. Given a pattern and
 a target engine, `rxray` classifies its worst-case match complexity under
 backtracking semantics as **linear**, **polynomial**, or **exponential** — no
-LLM, no execution required.
+LLM, no execution of the analyzed pattern.
+
+A single dependency (`regex-syntax`), pure Rust, MSRV 1.74. Usable as a library
+or a CLI gate.
 
 > **Status: Phase 1.** Sound NFA-based ambiguity analysis over a hand-rolled
 > Thompson NFA built from the `regex-syntax` HIR:
