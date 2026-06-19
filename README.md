@@ -32,10 +32,10 @@ LLM, no execution required.
   (e.g. it collapses `a|a → a`), which can differ from another engine's own
   parser — a pattern exponential on a naive backtracker may be reported safe if
   the parser simplifies the ambiguity away.
-- **IDA degree** is an estimate; the vulnerable/safe verdict is sound, the
-  `Polynomial(k)` exponent may not be exact.
-- **Size**: patterns whose expanded NFA would be huge (large bounded reps like
-  `{1000}`) return `AnalyzeError::TooComplex` rather than being analyzed.
+- **Size / budget**: patterns whose expanded NFA would be huge (large bounded
+  reps like `{1000}`) return `AnalyzeError::TooComplex`. Internal visit budgets
+  bound analysis time; a budget cutout can only *under*-report (lower degree /
+  miss), never over-report — there are no false positives.
 
 ## Example
 
@@ -48,6 +48,47 @@ assert_eq!(report.worst, ComplexityClass::Exponential);
 // Linear-by-construction engines (Rust regex, Go RE2) are never flagged.
 let report = analyze("(a+)+", Engine::RustRegex).unwrap();
 assert_eq!(report.worst, ComplexityClass::Linear);
+
+// Synthesize a verified attack input.
+use rxray::attack;
+let atk = attack("(a+)+$", Engine::Pcre2, 30).unwrap();
+assert!(atk.value.contains("aaaa")); // 30 pumps + a breaker
+```
+
+## Install
+
+```sh
+cargo install rxray        # CLI
+cargo add rxray            # library
+```
+
+## CLI
+
+```sh
+rxray [--engine E] [--max-complexity linear|poly|poly:K|exp] [--attack] <PATTERN>
+```
+
+The pattern is taken from the argument, or from stdin if omitted. `--attack`
+prints a verified attack string.
+
+```sh
+$ rxray --attack '(a+)+$'
+Exponential	(a+)+$
+  - two distinct match paths read the same pumpable input (exponential backtracking)
+  attack (30x): "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0"
+```
+
+Exit codes make it a CI gate:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | within `--max-complexity` (default `linear`) |
+| `1`  | exceeds the threshold (vulnerable) |
+| `2`  | parse error / too complex / usage error |
+
+```sh
+rxray --max-complexity poly 'a*a*$'   # exit 0 (polynomial allowed)
+rxray 'a*a*$'                          # exit 1 (default threshold is linear)
 ```
 
 ## License

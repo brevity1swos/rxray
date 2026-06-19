@@ -1,0 +1,33 @@
+# Automated releases for future versions: opens a release PR (version bump +
+# changelog) on push to main, and publishes to crates.io when that PR merges.
+#
+# ACTIVATION (human review required — this is staged as .proposed):
+#   1. Review this file, then: mv release-plz.yml.proposed release-plz.yml
+#   2. Add a repo secret RELEASE_PLZ_TOKEN — a GitHub PAT (contents+PR write) so
+#      release-plz's PRs trigger CI. CARGO_REGISTRY_TOKEN already exists.
+#   3. Optionally delete publish.yml (the one-shot bootstrap publish) — no longer
+#      needed once release-plz drives releases. The 0.1.0 publish + v0.1.0 tag
+#      already exist, so release-plz bootstraps cleanly from here.
+name: release-plz
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-plz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: release-plz/action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
