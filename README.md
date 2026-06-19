@@ -12,10 +12,12 @@ LLM, no execution required.
 >   state on a cycle through an off-diagonal state. Sound **and** complete for
 >   exponential ambiguity. Catches e.g. `(a+)+`, `(aa|a)+`, `(a*)*`.
 > - **IDA** (polynomial) — detected via the triple product `A³`
->   (`(p,p,q)→(p,q,q)`). Sound detection; the polynomial *degree* is still a
->   structural estimate (≥2).
+>   (`(p,p,q)→(p,q,q)`). Sound detection with an **exact** polynomial degree
+>   (longest IDA-pair chain).
+> - **Attack synthesis** — `attack()` produces a *verified* input that triggers
+>   the backtracking (validated by a step-counting matcher).
 >
-> Not yet published; API is unstable.
+> Early release (`0.x`) — the API may change.
 
 ## Known limitations
 
