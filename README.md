@@ -22,6 +22,30 @@ or a CLI gate.
 >
 > Early release (`0.x`) — the API may change.
 
+## Demo
+
+```console
+$ rxray 'a+b+'                              # safe
+Linear	a+b+
+                                            # exit 0
+
+$ rxray 'a*a*$'                             # quadratic — exceeds the default "linear" budget
+Polynomial(2)	a*a*$
+  - super-linear backtracking: polynomial O(n^2)
+                                            # exit 1
+
+$ rxray --max-complexity poly 'a*a*$'       # ...but allowed when poly is permitted
+Polynomial(2)	a*a*$
+  - super-linear backtracking: polynomial O(n^2)
+                                            # exit 0
+
+$ rxray --attack '(a+)+$'                   # exponential, with a verified attack
+Exponential	(a+)+$
+  - two distinct match paths read the same pumpable input (exponential backtracking)
+  attack (30x): "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0"
+                                            # exit 1
+```
+
 ## Known limitations
 
 - **Dialect**: backreferences and lookaround are not representable in an NFA and
@@ -72,14 +96,7 @@ rxray [--engine E] [--max-complexity linear|poly|poly:K|exp] [--attack] <PATTERN
 ```
 
 The pattern is taken from the argument, or from stdin if omitted. `--attack`
-prints a verified attack string.
-
-```sh
-$ rxray --attack '(a+)+$'
-Exponential	(a+)+$
-  - two distinct match paths read the same pumpable input (exponential backtracking)
-  attack (30x): "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0"
-```
+prints a verified attack string (see the [Demo](#demo) above).
 
 Exit codes make it a CI gate:
 
@@ -88,11 +105,6 @@ Exit codes make it a CI gate:
 | `0`  | within `--max-complexity` (default `linear`) |
 | `1`  | exceeds the threshold (vulnerable) |
 | `2`  | parse error / too complex / usage error |
-
-```sh
-rxray --max-complexity poly 'a*a*$'   # exit 0 (polynomial allowed)
-rxray 'a*a*$'                          # exit 1 (default threshold is linear)
-```
 
 ## License
 
