@@ -48,6 +48,21 @@ Exponential	(a+)+$
                                             # exit 1
 ```
 
+## Compared to other ReDoS tools
+
+| Tool | Runtime | Approach | Verified attack | Library API | Maintained |
+|------|---------|----------|:---:|:---:|:---:|
+| **rxray** | Rust, 1 dep | deterministic automaton (sound+complete EDA, sound IDA) | yes | yes | active |
+| [recheck](https://github.com/makenowjust-labs/recheck) | Scala / JS (npm) | hybrid: automaton + fuzzing | yes | yes | active |
+| [regexploit](https://github.com/doyensec/regexploit) | Python | static, heuristic | yes | partial | last 2024 |
+| [redos-detector](https://github.com/tjenkinson/redos-detector) | TypeScript | deterministic (proof-based) | no | yes | active |
+| [vuln-regex-detector](https://github.com/davisjam/vuln-regex-detector) | Perl (ensemble) | runs several detectors | varies | no | last 2022 |
+
+rxray's niche is being **native, deterministic, and embeddable**: a single-dependency
+Rust library + CLI with no JVM/Node/Python runtime, sound *and* complete exponential
+detection, and an exact polynomial degree. If you live in the JS ecosystem,
+[recheck](https://github.com/makenowjust-labs/recheck) is the most mature alternative.
+
 ## Known limitations
 
 - **Dialect**: backreferences and lookaround are not representable in an NFA and
