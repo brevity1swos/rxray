@@ -24,6 +24,8 @@ or a CLI gate.
 
 ## Demo
 
+![rxray classifying patterns as linear, polynomial, and exponential, with a verified attack string and CI-gate exit codes](assets/demo.gif)
+
 ```console
 $ rxray 'a+b+'                              # safe
 Linear	a+b+
