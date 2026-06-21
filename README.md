@@ -1,5 +1,10 @@
 # rxray
 
+[![CI](https://github.com/brevity1swos/rxray/actions/workflows/ci.yml/badge.svg)](https://github.com/brevity1swos/rxray/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/rxray.svg)](https://crates.io/crates/rxray)
+[![docs.rs](https://img.shields.io/docsrs/rxray)](https://docs.rs/rxray)
+[![license: MIT](https://img.shields.io/crates/l/rxray.svg)](./LICENSE)
+
 Deterministic regex worst-case complexity (ReDoS) analysis. Given a pattern and
 a target engine, `rxray` classifies its worst-case match complexity under
 backtracking semantics as **linear**, **polynomial**, or **exponential** — no
