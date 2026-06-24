@@ -1,6 +1,6 @@
 [package]
 name = "rxray"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.74"
 description = "Deterministic regex worst-case complexity (ReDoS) analysis: classify a pattern as linear/polynomial/exponential under backtracking semantics, per engine."
