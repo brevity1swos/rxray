@@ -58,8 +58,8 @@ Exponential	(a+)+$
 | Tool | Runtime | Approach | Verified attack | Library API | Maintained |
 |------|---------|----------|:---:|:---:|:---:|
 | **rxray** | Rust, 1 dep | deterministic automaton (sound+complete EDA, sound IDA) | yes | yes | active |
-| [redoctor](https://github.com/GetPageSpeed/redoctor) | Python | hybrid: automaton + fuzzing | yes | yes | active |
-| [recheck](https://github.com/makenowjust-labs/recheck) | Scala / JS (npm) | hybrid: automaton + fuzzing | yes | yes | last 2025 |
+| [recheck](https://github.com/makenowjust-labs/recheck) | Scala / JS (npm) | hybrid: automaton + fuzzing | yes | yes | active |
+| [redoctor](https://github.com/GetPageSpeed/redoctor) | Python (BSL-1.1) | hybrid: automaton + fuzzing | yes | yes | active |
 | [regexploit](https://github.com/doyensec/regexploit) | Python | static, heuristic | yes | partial | last 2024 |
 | [redos-detector](https://github.com/tjenkinson/redos-detector) | TypeScript | deterministic (proof-based) | no | yes | active |
 | [vuln-regex-detector](https://github.com/davisjam/vuln-regex-detector) | Perl (ensemble) | runs several detectors | varies | no | last 2022 |
